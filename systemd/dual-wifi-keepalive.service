@@ -1,0 +1,13 @@
+[Unit]
+Description=Linux Dual Wi-Fi Keepalive Daemon
+Documentation=https://github.com/apravint/linux-dual-wifi
+After=network.target network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/dual-wifi keepalive
+Restart=always
+RestartSec=10s
+
+[Install]
+WantedBy=default.target
