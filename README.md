@@ -55,6 +55,9 @@ dual-wifi status
 # Activate ECMP load balancing across both Wi-Fi adapters
 dual-wifi balance
 
+# Benchmark multi-WAN bandwidth and latency across both adapters
+dual-wifi benchmark
+
 # Manually specify interfaces if you have 3+ adapters
 dual-wifi --if1 wlp4s0 --if2 wlx503eaaec4cdb balance
 

@@ -193,6 +193,66 @@ clean_balance() {
     echo -e "${GREEN}✅ Default routing restored via ${IF1}.${NC}"
 }
 
+run_benchmark() {
+    echo -e "${BLUE}======================================================${NC}"
+    echo -e "${CYAN}⚡ Linux Dual Wi-Fi Multi-WAN Benchmark${NC}"
+    echo -e "${BLUE}======================================================${NC}"
+
+    if [ -z "$IF1" ] || [ -z "$IF2" ]; then
+        echo -e "${RED}❌ Error: Two wireless adapters are required for benchmark.${NC}"
+        echo -e "Available interfaces: ${ALL_IFS[*]:-none}"
+        exit 1
+    fi
+
+    IP1=$(get_ip "$IF1")
+    IP2=$(get_ip "$IF2")
+
+    if [ -z "$IP1" ] || [ -z "$IP2" ]; then
+        echo -e "${RED}❌ Error: Both adapters must have active IPv4 addresses.${NC}"
+        echo -e "${IF1}: IP=${IP1:-None}"
+        echo -e "${IF2}: IP=${IP2:-None}"
+        exit 1
+    fi
+
+    echo -e "Testing latency to 1.1.1.1 via ${GREEN}${IF1}${NC} ($IP1) and ${GREEN}${IF2}${NC} ($IP2)..."
+    RTT1=$(ping -c 2 -W 2 -I "$IP1" 1.1.1.1 2>/dev/null | grep 'rtt' | awk -F '/' '{print $5}' || echo "N/A")
+    RTT2=$(ping -c 2 -W 2 -I "$IP2" 1.1.1.1 2>/dev/null | grep 'rtt' | awk -F '/' '{print $5}' || echo "N/A")
+
+    echo -e "  ${IF1} Latency: ${YELLOW}${RTT1:-N/A} ms${NC}"
+    echo -e "  ${IF2} Latency: ${YELLOW}${RTT2:-N/A} ms${NC}"
+    echo ""
+    echo -e "Firing concurrent multi-stream download test..."
+
+    TEST_URL="https://speed.cloudflare.com/__down?bytes=5000000"
+    tmp1=$(mktemp)
+    tmp2=$(mktemp)
+
+    curl -s --interface "$IP1" -o /dev/null -w "%{speed_download}" --max-time 5 "$TEST_URL" > "$tmp1" 2>/dev/null &
+    pid1=$!
+    curl -s --interface "$IP2" -o /dev/null -w "%{speed_download}" --max-time 5 "$TEST_URL" > "$tmp2" 2>/dev/null &
+    pid2=$!
+
+    wait "$pid1" "$pid2" 2>/dev/null || true
+
+    s1=$(cat "$tmp1" 2>/dev/null | tr -d '\n\r ' || echo "0")
+    s2=$(cat "$tmp2" 2>/dev/null | tr -d '\n\r ' || echo "0")
+    rm -f "$tmp1" "$tmp2"
+
+    python3 -c "
+s1 = float('$s1' or 0)
+s2 = float('$s2' or 0)
+m1 = (s1 * 8) / 1000000
+m2 = (s2 * 8) / 1000000
+comb = m1 + m2
+print('=' * 54)
+print(f'Primary Adapter   ($IF1):   {m1:6.2f} Mbps | RTT: $RTT1 ms')
+print(f'Secondary Adapter ($IF2):   {m2:6.2f} Mbps | RTT: $RTT2 ms')
+print('-' * 54)
+print(f'Combined Aggregate Throughput:  {comb:6.2f} Mbps')
+print('=' * 54)
+"
+}
+
 # Parse flags or positional args
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -204,13 +264,13 @@ while [[ $# -gt 0 ]]; do
             IF2="$2"
             shift 2
             ;;
-        status|balance|keepalive|clean)
+        status|balance|benchmark|keepalive|clean)
             ACTION="$1"
             shift
             ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: dual-wifi [--if1 <interface>] [--if2 <interface>] {status|balance|keepalive|clean}"
+            echo "Usage: dual-wifi [--if1 <interface>] [--if2 <interface>] {status|balance|benchmark|keepalive|clean}"
             exit 1
             ;;
     esac
@@ -224,6 +284,9 @@ case "$ACTION" in
         ;;
     balance)
         enable_balance
+        ;;
+    benchmark)
+        run_benchmark
         ;;
     keepalive)
         keepalive
